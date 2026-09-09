@@ -1021,6 +1021,60 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
     }
 
     /**
+     * Computes the bounding box of the current selection (elements + wires).
+     * Returns an array of two Vectors: [min, max]. Either entry may be null
+     * if the selection is empty or if some drawables do not report bounds.
+     */
+    private Vector[] getSelectionBounds() {
+        Vector min = null;
+        Vector max = null;
+        for (VisualElement ve : selectedElements) {
+            GraphicMinMax mm = ve.getMinMax(false);
+            if (mm == null) continue;
+            Vector eMin = mm.getMin();
+            Vector eMax = mm.getMax();
+            if (eMin == null || eMax == null) continue;
+            if (min == null) {
+                min = new Vector(eMin);
+                max = new Vector(eMax);
+            } else {
+                min = Vector.min(min, eMin);
+                max = Vector.max(max, eMax);
+            }
+        }
+        for (Wire w : selectedWires) {
+            Vector wMin = Vector.min(w.p1, w.p2);
+            Vector wMax = Vector.max(w.p1, w.p2);
+            if (min == null) {
+                min = new Vector(wMin);
+                max = new Vector(wMax);
+            } else {
+                min = Vector.min(min, wMin);
+                max = Vector.max(max, wMax);
+            }
+        }
+        return new Vector[]{min, max};
+    }
+
+    /**
+     * Starts a group-move of the current selection. Used by MouseControllerNormal
+     * when the user presses on a selected element (or double-clicks) and the
+     * selection contains more than just that one element.
+     */
+    private void startMoveSelectionFromMouse(Vector pos) {
+        if (isLocked()) return;
+        if (selectedElements.isEmpty() && selectedWires.isEmpty()) return;
+        // Single-element selection uses the lighter MouseControllerMoveElement.
+        if (selectedElements.size() == 1 && selectedWires.isEmpty()) {
+            mouseMoveElement.activate(selectedElements.iterator().next(), pos);
+            return;
+        }
+        Vector[] b = getSelectionBounds();
+        if (b[0] == null || b[1] == null) return;
+        mouseMoveSelected.activate(b[0], b[1], pos);
+    }
+
+    /**
      * Draws a dashed outline around every selected element and renders
      * selected wires in the selection style. Called from paintComponent.
      */
@@ -2137,14 +2191,22 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
             cancelLongPress();
 
             // Double-click on an element body: jump straight to move mode
-            // (no long-press wait, no box-select). The element will follow
-            // the mouse as the user keeps the button held and drags.
+            // (no long-press wait, no box-select). If the element is part
+            // of a multi-selection, the whole selection moves as a group.
             if (e.getClickCount() == 2
                     && !isLocked()
                     && pressedElement != null
                     && !pressedElement.isPinPos(raster(pos))
                     && !isOnTopOfWire(pos, pressedElement)) {
-                mouseMoveElement.activate(pressedElement, pos);
+                if (selectedElements.contains(pressedElement)) {
+                    startMoveSelectionFromMouse(pos);
+                } else {
+                    // Make the element the selection so the upcoming
+                    // single-element move has clean context, and so the
+                    // user sees a selection outline during the drag.
+                    setSelection(pressedElement);
+                    mouseMoveElement.activate(pressedElement, pos);
+                }
                 return;
             }
 
@@ -2207,12 +2269,12 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
                 }
 
                 // Press on an already-selected element: promote the drag
-                // to a move immediately, no waiting. This is the
-                // "select first, then just grab" feel.
+                // to a move immediately, no waiting. If more than one
+                // element is selected the whole group moves together.
                 if (pressedElement != null
                         && selectedElements.contains(pressedElement)
                         && !pressedElement.isPinPos(raster(pos))) {
-                    mouseMoveElement.activate(pressedElement, pos);
+                    startMoveSelectionFromMouse(pos);
                     return true;
                 }
 
@@ -2416,6 +2478,13 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
                     insertWires(visualElement);
                 }
             }
+            // After a long-press or double-click move, the element
+            // becomes the new selection. Replaces whatever was selected
+            // before (e.g. a multi-select on A,B is replaced by the
+            // single element the user actually grabbed). If the
+            // original element was already the sole selection this is
+            // a no-op.
+            setSelection(originalVisualElement);
             mouseNormal.activate();
         }
 
