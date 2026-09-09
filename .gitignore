@@ -1,0 +1,18 @@
+# Build outputs
+.build/
+*.class
+*.jar
+*.war
+
+# Runtime / toolchain
+.runtime/
+*.app/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+# Logs
+*.log
