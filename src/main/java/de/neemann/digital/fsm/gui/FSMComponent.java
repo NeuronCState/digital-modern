@@ -59,8 +59,10 @@ public class FSMComponent extends JComponent {
             // macOS trackpad pinch delta; a mouse wheel reports the
             // same magnitude as a non-zero int in wheelRotation.
             final double f;
-            if (e.getWheelRotation() == 0) {
-                f = Math.pow(0.9, e.getPreciseWheelRotation() * 3.0);
+            if (e.isMetaDown() || e.getWheelRotation() == 0) {
+                double notches = e.getPreciseWheelRotation();
+                if (notches == 0) notches = e.getWheelRotation();
+                f = Math.pow(0.9, notches);
             } else {
                 f = Math.pow(0.9, e.getWheelRotation());
             }

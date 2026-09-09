@@ -251,12 +251,16 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
             // preciseWheelRotation. A legacy mouse wheel sets a matching
             // non-zero int in wheelRotation.
             final double f;
-            if (e.getWheelRotation() == 0) {
-                // macOS trackpad pinch / smooth scroll: wheelRotation is
-                // 0 and the real fractional delta lives in
-                // preciseWheelRotation. Scale it so a full pinch feels
-                // similar to a few legacy wheel notches.
-                f = Math.pow(0.9, e.getPreciseWheelRotation() * 3.0);
+            if (e.isMetaDown() || e.getWheelRotation() == 0) {
+                // macOS trackpad pinch (via preciseWheelRotation when the
+                // JVM still bridges NSEventTypeMagnify) OR an explicit
+                // Cmd+scroll gesture (the standard macOS zoom shortcut
+                // used by Safari/Pages/Photos). Both map to zoom.
+                // 0.9^1 per "notch" matches the legacy feel; pinch events
+                // deliver small fractional deltas that accumulate.
+                double notches = e.getPreciseWheelRotation();
+                if (notches == 0) notches = e.getWheelRotation();
+                f = Math.pow(0.9, notches);
             } else {
                 f = Math.pow(0.9, e.getWheelRotation());
             }
@@ -2131,6 +2135,18 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
             pressedElement = getCircuit().getElementAt(pos, false);
             longPressFired = false;
             cancelLongPress();
+
+            // Double-click on an element body: jump straight to move mode
+            // (no long-press wait, no box-select). The element will follow
+            // the mouse as the user keeps the button held and drags.
+            if (e.getClickCount() == 2
+                    && !isLocked()
+                    && pressedElement != null
+                    && !pressedElement.isPinPos(raster(pos))
+                    && !isOnTopOfWire(pos, pressedElement)) {
+                mouseMoveElement.activate(pressedElement, pos);
+                return;
+            }
 
             // Long press -> drag an element.
             // We only arm the timer when the press is on an element body
