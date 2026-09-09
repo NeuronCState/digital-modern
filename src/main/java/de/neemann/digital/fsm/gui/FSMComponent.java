@@ -55,8 +55,16 @@ public class FSMComponent extends JComponent {
      */
     FSMComponent() {
         addMouseWheelListener(e -> {
+            // See CircuitComponent: preciseWheelRotation carries the
+            // macOS trackpad pinch delta; a mouse wheel reports the
+            // same magnitude as a non-zero int in wheelRotation.
+            final double f;
+            if (e.getWheelRotation() == 0) {
+                f = Math.pow(0.9, e.getPreciseWheelRotation() * 3.0);
+            } else {
+                f = Math.pow(0.9, e.getWheelRotation());
+            }
             Vector pos = getPosVector(e);
-            double f = Math.pow(0.9, e.getWheelRotation());
             transform.translate(pos.x, pos.y);
             transform.scale(f, f);
             transform.translate(-pos.x, -pos.y);

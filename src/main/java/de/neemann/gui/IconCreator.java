@@ -32,7 +32,8 @@ public final class IconCreator {
      * @return the icon
      */
     public static Icon create(String name) {
-        return new ImageIcon(createImage(name));
+        Icon modern = de.neemann.digital.gui.modern.ModernUI.legacyIcon(name);
+        return modern != null ? modern : new ImageIcon(createImage(name));
     }
 
     /**

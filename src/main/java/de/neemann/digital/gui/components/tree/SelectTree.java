@@ -116,7 +116,7 @@ public class SelectTree extends JTree {
             JLabel comp = (JLabel) super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
 
             if (leaf)
-                comp.setIcon(((LibraryNode) value).getIconOrNull(shapeFactory));
+                comp.setIcon(de.neemann.digital.gui.modern.ModernUI.componentIcon(((LibraryNode) value).getIconOrNull(shapeFactory)));
             else
                 comp.setIcon(null);
 

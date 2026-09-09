@@ -157,6 +157,15 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
     private String lastUsedTunnelName;
     private boolean presentationMode;
 
+    // --- Selection state (click-to-select + long-press-to-drag model) ---
+    private final HashSet<VisualElement> selectedElements = new HashSet<>();
+    private final HashSet<Wire> selectedWires = new HashSet<>();
+    private static final int LONG_PRESS_MS = 350;
+    /**
+     * Style used to render the selection outline (dashed highlight color).
+     */
+    private static final Style SELECTION_STYLE = Style.DASH.deriveColor(ColorKey.HIGHLIGHT);
+
     /**
      * Creates a new instance
      *
@@ -237,7 +246,20 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
         setFocusable(true);
 
         addMouseWheelListener(e -> {
-            double f = Math.pow(0.9, e.getWheelRotation());
+            // macOS trackpad pinch (and two-finger smooth scroll) delivers
+            // wheelRotation == 0; the real fractional delta lives in
+            // preciseWheelRotation. A legacy mouse wheel sets a matching
+            // non-zero int in wheelRotation.
+            final double f;
+            if (e.getWheelRotation() == 0) {
+                // macOS trackpad pinch / smooth scroll: wheelRotation is
+                // 0 and the real fractional delta lives in
+                // preciseWheelRotation. Scale it so a full pinch feels
+                // similar to a few legacy wheel notches.
+                f = Math.pow(0.9, e.getPreciseWheelRotation() * 3.0);
+            } else {
+                f = Math.pow(0.9, e.getWheelRotation());
+            }
             if (scalingValid(f)) {
                 Vector pos = getPosVector(e);
                 transform.translate(pos.x, pos.y);
@@ -340,12 +362,7 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
             @Override
             public void actionPerformed(ActionEvent actionEvent) {
                 if (activeMouseController == mouseNormal) {
-                    GraphicMinMax gr = new GraphicMinMax();
-                    getCircuit().drawTo(gr);
-                    if (gr.getMin() != null && gr.getMax() != null) {
-                        mouseSelect.activate(gr.getMin(), gr.getMax());
-                        mouseSelect.release();
-                    }
+                    selectAll();
                 }
             }
         }.setAcceleratorCTRLplus('A').enableAcceleratorIn(this);
@@ -812,6 +829,220 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
 
     }
 
+    // ------------------------------------------------------------------
+    // Selection helpers (click-to-select / long-press-to-drag model).
+    // Selection is independent of the temporary highLighted set used for
+    // hover / wire-net / box-select feedback. It is owned by mouseNormal.
+    // ------------------------------------------------------------------
+
+    /**
+     * Replaces the current selection with the given element.
+     */
+    public void setSelection(VisualElement element) {
+        if (element == null) {
+            clearSelection();
+            return;
+        }
+        if (selectedElements.size() == 1 && selectedElements.contains(element)
+                && selectedWires.isEmpty()) {
+            return; // unchanged
+        }
+        selectedElements.clear();
+        selectedWires.clear();
+        selectedElements.add(element);
+        updateSelectionActions();
+        graphicHasChanged();
+    }
+
+    /**
+     * Replaces the current selection with the given wire.
+     */
+    public void setSelection(Wire wire) {
+        if (wire == null) {
+            clearSelection();
+            return;
+        }
+        if (selectedWires.size() == 1 && selectedWires.contains(wire)
+                && selectedElements.isEmpty()) {
+            return;
+        }
+        selectedElements.clear();
+        selectedWires.clear();
+        selectedWires.add(wire);
+        updateSelectionActions();
+        graphicHasChanged();
+    }
+
+    /**
+     * Toggles the given element's membership in the selection.
+     */
+    public void toggleSelection(VisualElement element) {
+        if (element == null) return;
+        if (!selectedElements.remove(element)) {
+            selectedElements.add(element);
+        }
+        updateSelectionActions();
+        graphicHasChanged();
+    }
+
+    /**
+     * Toggles the given wire's membership in the selection.
+     */
+    public void toggleSelection(Wire wire) {
+        if (wire == null) return;
+        if (!selectedWires.remove(wire)) {
+            selectedWires.add(wire);
+        }
+        updateSelectionActions();
+        graphicHasChanged();
+    }
+
+    /**
+     * Adds the given element to the existing selection.
+     */
+    public void addToSelection(VisualElement element) {
+        if (element == null) return;
+        selectedElements.add(element);
+        updateSelectionActions();
+        graphicHasChanged();
+    }
+
+    /**
+     * Adds the given wire to the existing selection.
+     */
+    public void addToSelection(Wire wire) {
+        if (wire == null) return;
+        selectedWires.add(wire);
+        updateSelectionActions();
+        graphicHasChanged();
+    }
+
+    /**
+     * Replaces the current selection with everything in the given rect.
+     */
+    public void setSelectionFromRect(Vector min, Vector max) {
+        ArrayList<Drawable> elements = getCircuit().getElementsToHighlight(min, max);
+        selectedElements.clear();
+        selectedWires.clear();
+        if (elements != null) {
+            for (Drawable d : elements) {
+                if (d instanceof VisualElement)
+                    selectedElements.add((VisualElement) d);
+                else if (d instanceof Wire)
+                    selectedWires.add((Wire) d);
+            }
+        }
+        updateSelectionActions();
+        graphicHasChanged();
+    }
+
+    /**
+     * Selects every element and wire of the circuit.
+     */
+    public void selectAll() {
+        selectedElements.clear();
+        selectedWires.clear();
+        selectedElements.addAll(getCircuit().getElements());
+        selectedWires.addAll(getCircuit().getWires());
+        updateSelectionActions();
+        graphicHasChanged();
+    }
+
+    /**
+     * Clears the current selection.
+     */
+    public void clearSelection() {
+        if (selectedElements.isEmpty() && selectedWires.isEmpty()) return;
+        selectedElements.clear();
+        selectedWires.clear();
+        updateSelectionActions();
+        graphicHasChanged();
+    }
+
+    /**
+     * @return true if the selection is non-empty.
+     */
+    public boolean hasSelection() {
+        return !selectedElements.isEmpty() || !selectedWires.isEmpty();
+    }
+
+    /**
+     * @return the currently selected elements.
+     */
+    public HashSet<VisualElement> getSelectedElements() {
+        return selectedElements;
+    }
+
+    /**
+     * @return the currently selected wires.
+     */
+    public HashSet<Wire> getSelectedWires() {
+        return selectedWires;
+    }
+
+    /**
+     * Synchronises the toolbar / menu action enable state with the current selection.
+     * Called whenever the selection changes. Only effective in mouseNormal.
+     */
+    private void updateSelectionActions() {
+        if (activeMouseController == mouseNormal) {
+            boolean any = hasSelection();
+            deleteAction.setEnabled(any);
+            copyAction.setEnabled(any);
+            cutAction.setEnabled(any);
+            rotateAction.setEnabled(false);
+        }
+    }
+
+    /**
+     * Deletes everything in the current selection. Undoable as a single
+     * combined modification.
+     */
+    public void deleteSelection() {
+        if (isLocked()) return;
+        if (selectedElements.isEmpty() && selectedWires.isEmpty()) return;
+        if (selectedElements.isEmpty() && selectedWires.size() == 1) {
+            // Fast path: single wire.
+            Wire w = selectedWires.iterator().next();
+            modify(new ModifyDeleteWire(w));
+        } else {
+            Modifications.Builder<Circuit> b = new Modifications.Builder<>(Lang.get("mod_deletedSelection"));
+            for (Wire w : selectedWires)
+                b.add(new ModifyDeleteWire(w));
+            for (VisualElement ve : selectedElements)
+                b.add(new ModifyDeleteElement(ve));
+            modify(b.build());
+        }
+        clearSelection();
+    }
+
+    /**
+     * Draws a dashed outline around every selected element and renders
+     * selected wires in the selection style. Called from paintComponent.
+     */
+    private void drawSelection(Graphic gr) {
+        for (Wire w : selectedWires)
+            w.drawTo(gr, SELECTION_STYLE);
+        for (VisualElement ve : selectedElements) {
+            // Draw the element again on top of the normal paint in the selection
+            // style so the dashed blue outline is visible regardless of the
+            // element's normal color.
+            GraphicMinMax mm = ve.getMinMax(false);
+            Vector min = mm.getMin();
+            Vector max = mm.getMax();
+            if (min == null || max == null) continue;
+            Vector pad = new Vector(SIZE, SIZE);
+            Vector p1 = min.sub(pad);
+            Vector p2 = new Vector(max.x + SIZE, min.y - SIZE);
+            Vector p3 = max.add(pad);
+            Vector p4 = new Vector(min.x - SIZE, max.y + SIZE);
+            gr.drawLine(p1, p2, SELECTION_STYLE);
+            gr.drawLine(p2, p3, SELECTION_STYLE);
+            gr.drawLine(p3, p4, SELECTION_STYLE);
+            gr.drawLine(p4, p1, SELECTION_STYLE);
+        }
+    }
+
     /**
      * Sets the style used to highlight components
      *
@@ -948,6 +1179,11 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
         gr2.transform(transform);
         GraphicSwing gr = new GraphicSwing(gr2, (int) (2 / scaleX));
         gr.enableAntiAlias(activeMouseController.drawables() < 200);
+        // Draw the persistent selection (click-to-select) before the
+        // active mouse controller's overlay so move/wire previews stay on
+        // top of the selection outline.
+        if (activeMouseController == mouseNormal && hasSelection())
+            drawSelection(gr);
         activeMouseController.drawTo(gr);
         gr2.setTransform(oldTrans);
 
@@ -1718,6 +1954,11 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
             rotateAction.setEnabled(false);
             setCursor(mouseCursor);
             graphicHasChanged();
+            // mouseNormal keeps the persistent selection visible, so let it
+            // re-evaluate the toolbar / delete-action enable state based on
+            // whatever the current selection is.
+            if (this == mouseNormal)
+                updateSelectionActions();
         }
 
         void deactivate() {
@@ -1785,6 +2026,8 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
         private Vector pos;
         private MouseEvent downButton;
         private VisualElement pressedElement;
+        private javax.swing.Timer longPressTimer;
+        private boolean longPressFired;
 
         private MouseControllerNormal(Cursor cursor) {
             super(cursor);
@@ -1794,43 +2037,91 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
         void activate() {
             super.activate();
             pos = null;
-        }
-
-        @Override
-        void clicked(MouseEvent e) {
-            Vector pos = getPosVector(e);
-
-            if (mouse.isSecondaryClick(e)) {
-                SearchResult sel = getVisualElement(pos, true);
-                if (sel.getVisualElement() != null)
-                    editAttributes(sel.getVisualElement(), e);
-            } else if (mouse.isPrimaryClick(e) && hadFocusAtClick) {
-                SearchResult sel = getVisualElement(pos, false);
-                switch (sel.getState()) {
-                    case FOUND:
-                        VisualElement vp = sel.getVisualElement();
-                        if (vp.isPinPos(raster(pos)) && !mouse.isClickModifier(e)) {
-                            if (!isLocked()) mouseWireRect.activate(pos);
-                        } else
-                            mouseMoveElement.activate(vp, pos);
-                        break;
-                    case NONE:
-                        if (!isLocked()) {
-                            if (mouse.isClickModifier(e)) {
-                                Wire wire = getCircuit().getWireAt(pos, SIZE2);
-                                if (wire != null)
-                                    mouseMoveWire.activate(wire, pos);
-                            } else
-                                mouseWireRect.activate(pos);
-                        }
-                        break;
-                }
-            }
+            pressedElement = null;
+            cancelLongPress();
         }
 
         @Override
         void deactivate() {
             removeHighLighted();
+            cancelLongPress();
+        }
+
+        /**
+         * Stops the long-press timer if it is still running.
+         */
+        private void cancelLongPress() {
+            if (longPressTimer != null) {
+                longPressTimer.stop();
+                longPressTimer = null;
+            }
+            longPressFired = false;
+        }
+
+        @Override
+        void clicked(MouseEvent e) {
+            // The dispatcher only calls clicked() when no drag occurred.
+            // If the long-press had fired while the button was held the
+            // active controller is already mouseMoveElement, which
+            // handles its own release/click, so we never get here for
+            // that path.
+            if (mouse.isSecondaryClick(e)) {
+                Vector pos = getPosVector(e);
+                SearchResult sel = getVisualElement(pos, true);
+                if (sel.getVisualElement() != null)
+                    editAttributes(sel.getVisualElement(), e);
+                return;
+            }
+
+            if (!mouse.isPrimaryClick(e) || !hadFocusAtClick) return;
+
+            Vector p = getPosVector(e);
+            VisualElement element = getCircuit().getElementAt(p, false);
+
+            if (element != null) {
+                // Pin click -> start a wire from the pin.
+                if (element.isPinPos(raster(p)) && !mouse.isClickModifier(e)) {
+                    if (!isLocked()) {
+                        clearSelection();
+                        mouseWireRect.activate(p);
+                    }
+                    return;
+                }
+                if (isLocked()) return;
+                if (mouse.isClickModifier(e)) {
+                    // Ctrl+click -> toggle the element in the selection.
+                    toggleSelection(element);
+                } else {
+                    // Plain click -> replace the selection with this element,
+                    // unless the element is already the only selected thing.
+                    if (!selectedElements.contains(element) || hasWiresSelected()) {
+                        setSelection(element);
+                    }
+                }
+                return;
+            }
+
+            Wire wire = getCircuit().getWireAt(p, SIZE2);
+            if (wire != null) {
+                if (mouse.isClickModifier(e)) {
+                    if (!isLocked()) {
+                        clearSelection();
+                        mouseMoveWire.activate(wire, p);
+                    }
+                } else {
+                    setSelection(wire);
+                }
+                return;
+            }
+
+            // Click on empty space.
+            if (isLocked()) return;
+            if (!mouse.isClickModifier(e))
+                clearSelection();
+        }
+
+        private boolean hasWiresSelected() {
+            return !selectedWires.isEmpty();
         }
 
         @Override
@@ -1838,15 +2129,50 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
             downButton = e;
             pos = getPosVector(e);
             pressedElement = getCircuit().getElementAt(pos, false);
+            longPressFired = false;
+            cancelLongPress();
+
+            // Long press -> drag an element.
+            // We only arm the timer when the press is on an element body
+            // (not a pin, not empty space, not on a wire under the element)
+            // and the circuit is editable.
+            if (!isLocked() && pressedElement != null) {
+                Vector p0 = pos;
+                VisualElement ve = pressedElement;
+                if (!ve.isPinPos(raster(p0)) && !isOnTopOfWire(p0, ve)) {
+                    longPressTimer = new javax.swing.Timer(LONG_PRESS_MS, evt -> {
+                        longPressTimer = null;
+                        longPressFired = true;
+                        if (activeMouseController == MouseControllerNormal.this
+                                && !isLocked()
+                                && ve == pressedElement) {
+                            // Promote this press into a move-element drag.
+                            // The dispatcher will route subsequent
+                            // mouseDragged events to mouseMoveElement.
+                            mouseMoveElement.activate(ve, p0);
+                        }
+                    });
+                    longPressTimer.setRepeats(false);
+                    longPressTimer.start();
+                }
+            }
+        }
+
+        private boolean isOnTopOfWire(Vector p, VisualElement ve) {
+            Wire w = getCircuit().getWireAt(p, SIZE2);
+            return w != null;
         }
 
         @Override
         void released(MouseEvent e) {
+            cancelLongPress();
             pressedElement = null;
         }
 
         @Override
         boolean dragged(MouseEvent e) {
+            // A drag started -> the long press loses.
+            cancelLongPress();
             if (mouse.isPrimaryClick(downButton)) {
                 Vector p = getPosVector(e);
                 if (pos == null)
@@ -1858,6 +2184,24 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
                 return true;
             }
             return !mouse.isSecondaryClick(downButton);
+        }
+
+        @Override
+        public void delete() {
+            // Delete the persistent selection (Delete / Backspace key).
+            deleteSelection();
+        }
+
+        @Override
+        public void escapePressed() {
+            if (hasSelection()) {
+                clearSelection();
+            } else {
+                // Preserve the original behaviour of also clearing any
+                // pending wire-drawing state by falling through to
+                // mouseNormal's normal cycle: there is nothing else to
+                // cancel, so this is a no-op.
+            }
         }
     }
 
@@ -2029,6 +2373,21 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
                 visualElement.setPos(toMinRaster(pos.add(delta), minRaster));
                 repaint();
             }
+        }
+
+        @Override
+        boolean dragged(MouseEvent e) {
+            // Long-press -> drag: the user is still holding the mouse
+            // button, so the dispatcher routes mouseDragged events to
+            // us. We move the element exactly like in the moved() path
+            // (which is used by the legacy click-to-pick-up flow).
+            if (!isLocked()) {
+                Vector pos = getPosVector(e);
+                visualElement.setPos(toMinRaster(pos.add(delta), minRaster));
+                repaint();
+                return true;
+            }
+            return false;
         }
 
         @Override
@@ -2374,9 +2733,13 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
         void released(MouseEvent e) {
             wasReleased = true;
             Vector dif = corner1.sub(corner2);
-            if (Math.abs(dif.x) > MIN_SIZE && Math.abs(dif.y) > MIN_SIZE)
-                setCursor(moveCursor);
-            else {
+            if (Math.abs(dif.x) > MIN_SIZE && Math.abs(dif.y) > MIN_SIZE) {
+                // Commit the box selection to the persistent selection set
+                // so the user can immediately Delete / long-press-move / etc.
+                setSelectionFromRect(Vector.min(corner1, corner2),
+                        Vector.max(corner1, corner2));
+                mouseNormal.activate();
+            } else {
                 removeHighLighted();
                 mouseNormal.activate();
             }

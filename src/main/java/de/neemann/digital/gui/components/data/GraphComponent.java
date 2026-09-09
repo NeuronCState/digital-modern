@@ -33,7 +33,15 @@ public class GraphComponent extends JComponent {
     GraphComponent(ValueTable dataSet, SyncAccess modelSync) {
         plotter = new DataPlotter(dataSet, modelSync);
         addMouseWheelListener(e -> {
-            double f = Math.pow(0.9, e.getWheelRotation());
+            // See CircuitComponent: preciseWheelRotation carries the
+            // macOS trackpad pinch delta; a mouse wheel reports the
+            // same magnitude as a non-zero int in wheelRotation.
+            final double f;
+            if (e.getWheelRotation() == 0) {
+                f = Math.pow(0.9, e.getPreciseWheelRotation() * 3.0);
+            } else {
+                f = Math.pow(0.9, e.getWheelRotation());
+            }
             scale(f, e.getX());
         });
 

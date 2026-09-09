@@ -91,6 +91,8 @@ import static javax.swing.JOptionPane.showInputDialog;
  * Set log level: -Dorg.slf4j.simpleLogger.defaultLogLevel=debug
  */
 public final class Main extends JFrame implements ClosingWindowListener.ConfirmSave, FileHistory.OpenInterface, DigitalRemoteInterface, StatusInterface, ChangedListener {
+    static { de.neemann.digital.gui.modern.ModernUI.install(); }
+    private JSplitPane modernSplit;
     private static final Logger LOGGER = LoggerFactory.getLogger(Main.class);
     private static final String KEY_START_STOP_ACTION = "startStop";
     private static boolean experimental;
@@ -281,6 +283,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
             }
         });
 
+        de.neemann.digital.gui.modern.ModernUI.decorate(this, toolBar, statusLabel);
         getContentPane().add(toolBar, BorderLayout.NORTH);
 
         new ToolTipAction("insertLast") {
@@ -305,6 +308,8 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
         } else
             setLocationRelativeTo(null);
 
+        setMinimumSize(new Dimension(960, 620));
+        if (getWidth() < 1100) setSize(1240, 800);
         checkIDEIntegration(builder, menuBar);
     }
 
@@ -406,26 +411,30 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
         JCheckBoxMenuItem treeCheckBox = new JCheckBoxMenuItem(Lang.get("menu_treeSelect"));
         treeCheckBox.setToolTipText(Lang.get("menu_treeSelect_tt"));
         treeCheckBox.addActionListener(actionEvent -> {
-            getContentPane().remove(componentOnPane);
-            if (treeCheckBox.isSelected()) {
-                JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-                split.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT)
+            if (modernSplit == null) {
+                getContentPane().remove(componentOnPane);
+                modernSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+                modernSplit.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT)
                         .put(KeyStroke.getKeyStroke(KeyEvent.VK_F6, 0), "digNone");
                 treeModel = new LibraryTreeModel(library);
-                split.setLeftComponent(createTreeComponent());
-                split.setRightComponent(circuitScrollPanel);
-                getContentPane().add(split);
-                componentOnPane = split;
-            } else {
-                if (treeModel != null) {
-                    treeModel.close();
-                    treeModel = null;
-                }
-                getContentPane().add(circuitScrollPanel);
-                componentOnPane = circuitScrollPanel;
+                modernSplit.setLeftComponent(createTreeComponent());
+                modernSplit.setRightComponent(circuitScrollPanel);
+                modernSplit.setContinuousLayout(true);
+                modernSplit.setBorder(BorderFactory.createEmptyBorder());
+                modernSplit.setDividerSize(1);
+                modernSplit.setResizeWeight(0);
+                modernSplit.setDividerLocation(252);
+                getContentPane().add(modernSplit);
+                componentOnPane = modernSplit;
+                revalidate();
             }
-            revalidate();
+            de.neemann.digital.gui.modern.ModernUI.setSidebarVisible(modernSplit, treeCheckBox.isSelected());
         });
+        JButton sidebarButton = new JButton(de.neemann.digital.gui.modern.ModernUI.icon("panel-left"));
+        sidebarButton.setToolTipText(Lang.get("menu_treeSelect") + " · F5");
+        sidebarButton.getAccessibleContext().setAccessibleName(Lang.get("menu_treeSelect"));
+        sidebarButton.addActionListener(e -> treeCheckBox.doClick());
+        toolBar.add(sidebarButton, 0);
         treeCheckBox.setAccelerator(KeyStroke.getKeyStroke("F5"));
 
         JCheckBoxMenuItem presentationMode = new JCheckBoxMenuItem(Lang.get("menu_presentationMode"));
@@ -444,8 +453,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
             }
         }.setToolTip(Lang.get("menu_tutorial_tt"));
 
-        if (Settings.getInstance().get(Keys.SETTINGS_DEFAULT_TREESELECT))
-            SwingUtilities.invokeLater(treeCheckBox::doClick);
+        SwingUtilities.invokeLater(treeCheckBox::doClick);
 
         toolBar.add(viewHelp.createJButtonNoText());
         toolBar.add(zoomIn.createJButtonNoText());
@@ -481,7 +489,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
     private JComponent createTreeComponent() {
         JPanel panel = new JPanel(new BorderLayout());
         JPanel field = new JPanel(new BorderLayout());
-        JTextField textField = new SearchTextField();
+        JTextField textField = new JTextField();
         field.add(textField);
         JButton clearButton = new JButton(new AbstractAction("\u2717") {
             @Override
@@ -517,6 +525,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
             }
         });
         panel.add(new JScrollPane(tree));
+        de.neemann.digital.gui.modern.ModernUI.decorateSidebar(panel, field, textField, clearButton, tree);
         return panel;
     }
 
@@ -1192,7 +1201,10 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
         run.add(runTests.createJMenuItem());
         run.add(runAllTests.createJMenuItem());
 
-        toolBar.add(runModelState.setIndicator(runModelAction.createJButtonNoText()));
+        JButton runButton = runModelAction.createJButtonNoText();
+        runButton.setText(Lang.get("menu_run"));
+        runButton.putClientProperty("modern.primary", true);
+        toolBar.add(runModelState.setIndicator(runButton));
         toolBar.add(runToBreakAction.createJButtonNoText());
         toolBar.add(stoppedStateAction.createJButtonNoText());
         toolBar.addSeparator();
@@ -1730,7 +1742,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
             this.baseFilename = filename;
             if (toPrefs)
                 fileHistory.add(filename);
-            setTitle(prefix + filename + " - " + Lang.get("digital"));
+            setTitle(prefix + filename.getName() + " — Digital");
         } else {
             setTitle(prefix + Lang.get("digital"));
         }
@@ -2161,17 +2173,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
         if (LOGGER.isDebugEnabled())
             LOGGER.debug(InfoDialog.getInstance().getRevision());
 
-        /*
-        The Apple look an feel, which can be enabled by choosing the UIManager.getSystemLookAndFeelClassName()
-        on MacOS has problems with the component tree view because it does not support different item heights.
-        Also, the HTML rendering does not seem to be supported. See GitHub #190.
-        Therefore also on MosOS the MetalLookAndFeel is used.
-         */
-        try { // enforce MetalLookAndFeel
-            UIManager.setLookAndFeel("javax.swing.plaf.metal.MetalLookAndFeel");
-        } catch (ClassNotFoundException | InstantiationException | UnsupportedLookAndFeelException | IllegalAccessException e) {
-            e.printStackTrace();
-        }
+        de.neemann.digital.gui.modern.ModernUI.install();
         ToolTipManager.sharedInstance().setDismissDelay(10000);
         URL.setURLStreamHandlerFactory(ElementHelpDialog.createURLStreamHandlerFactory());
 
