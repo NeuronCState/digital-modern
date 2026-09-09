@@ -4,7 +4,7 @@ ROOT="${0:A:h:h}"
 cd "$ROOT"
 JDK="$ROOT/.runtime/jdk-21.0.12.1+1/Contents/Home"
 mkdir -p .build/classes modern/dist
-"$JDK/bin/javac" --release 8 -encoding UTF-8 -cp 'Digital.jar:modern/lib/flatlaf-3.7.jar' -d .build/classes source/src/main/java/de/neemann/digital/gui/modern/ModernUI.java source/src/main/java/de/neemann/gui/IconCreator.java source/src/main/java/de/neemann/digital/gui/components/tree/SelectTree.java source/src/main/java/de/neemann/digital/gui/Main.java
+"$JDK/bin/javac" --release 8 -encoding UTF-8 -cp 'Digital.jar:modern/lib/flatlaf-3.7.jar' -d .build/classes source/src/main/java/de/neemann/digital/gui/modern/ModernUI.java source/src/main/java/de/neemann/gui/IconCreator.java source/src/main/java/de/neemann/digital/gui/components/tree/SelectTree.java source/src/main/java/de/neemann/digital/gui/Main.java source/src/main/java/de/neemann/digital/gui/components/CircuitComponent.java source/src/main/java/de/neemann/digital/gui/components/data/GraphComponent.java source/src/main/java/de/neemann/digital/fsm/gui/FSMComponent.java
 cp Digital.jar modern/dist/Digital.jar
 "$JDK/bin/jar" uf modern/dist/Digital.jar -C .build/classes . -C modern/resources .
 cp modern/lib/flatlaf-3.7.jar modern/dist/
