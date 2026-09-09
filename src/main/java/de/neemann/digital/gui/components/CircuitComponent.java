@@ -2134,9 +2134,15 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
 
             // Long press -> drag an element.
             // We only arm the timer when the press is on an element body
-            // (not a pin, not empty space, not on a wire under the element)
-            // and the circuit is editable.
-            if (!isLocked() && pressedElement != null) {
+            // (not a pin, not empty space, not on a wire under the element),
+            // the circuit is editable, and the element is NOT already
+            // selected. If the element is already in the selection we
+            // skip the timer entirely: a subsequent drag promotes to
+            // mouseMoveElement immediately, so the user does not have to
+            // wait 350 ms every time they re-grab something they just
+            // selected.
+            if (!isLocked() && pressedElement != null
+                    && !selectedElements.contains(pressedElement)) {
                 Vector p0 = pos;
                 VisualElement ve = pressedElement;
                 if (!ve.isPinPos(raster(p0)) && !isOnTopOfWire(p0, ve)) {
@@ -2177,10 +2183,41 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
                 Vector p = getPosVector(e);
                 if (pos == null)
                     pos = p;
-                if (pressedElement != null && pressedElement.equalsDescription(DummyElement.RECTDESCRIPTION))
+
+                if (pressedElement != null
+                        && pressedElement.equalsDescription(DummyElement.RECTDESCRIPTION)) {
                     mouseResizeRect.activate(pressedElement, pos);
-                else
-                    mouseSelect.activate(pos, p);
+                    return true;
+                }
+
+                // Press on an already-selected element: promote the drag
+                // to a move immediately, no waiting. This is the
+                // "select first, then just grab" feel.
+                if (pressedElement != null
+                        && selectedElements.contains(pressedElement)
+                        && !pressedElement.isPinPos(raster(pos))) {
+                    mouseMoveElement.activate(pressedElement, pos);
+                    return true;
+                }
+
+                // Press on an element that is NOT selected: falling back
+                // to box-select lets the user grab a region instead of
+                // a single element.
+                if (pressedElement != null
+                        && !mouse.isClickModifier(e)) {
+                    // do not start box-select over an unselected element
+                    // unless the user is holding the click modifier;
+                    // otherwise the drag would silently cancel their
+                    // intent to long-press the element.
+                    return true;
+                }
+
+                // Empty space drag. Without a modifier -> pan the
+                // circuit (return false and let the dispatcher do it).
+                // With the click modifier -> classic box select.
+                if (!mouse.isClickModifier(e))
+                    return false;
+                mouseSelect.activate(pos, p);
                 return true;
             }
             return !mouse.isSecondaryClick(downButton);
