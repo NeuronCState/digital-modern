@@ -2190,22 +2190,23 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
             longPressFired = false;
             cancelLongPress();
 
-            // Double-click on an element body: jump straight to move mode
-            // (no long-press wait, no box-select). If the element is part
-            // of a multi-selection, the whole selection moves as a group.
+            // Double-click on an element body: pick the element up so it
+            // follows the mouse without the user having to hold the
+            // button. The next single click drops it. Multi-select drag
+            // keeps using mouseMoveSelected (button held) so it still
+            // works the way it did before.
             if (e.getClickCount() == 2
                     && !isLocked()
                     && pressedElement != null
                     && !pressedElement.isPinPos(raster(pos))
                     && !isOnTopOfWire(pos, pressedElement)) {
-                if (selectedElements.contains(pressedElement)) {
+                if (selectedElements.contains(pressedElement)
+                        && (selectedElements.size() > 1 || !selectedWires.isEmpty())) {
                     startMoveSelectionFromMouse(pos);
                 } else {
-                    // Make the element the selection so the upcoming
-                    // single-element move has clean context, and so the
-                    // user sees a selection outline during the drag.
-                    setSelection(pressedElement);
-                    mouseMoveElement.activate(pressedElement, pos);
+                    if (!selectedElements.contains(pressedElement))
+                        setSelection(pressedElement);
+                    mouseMoveElement.activatePickedUp(pressedElement, pos);
                 }
                 return;
             }
@@ -2449,6 +2450,26 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
         private Vector delta;
         private VisualElement originalVisualElement;
         private boolean minRaster;
+        /**
+         * True while the controller is in "picked up" mode: the element
+         * follows the mouse without the user holding any button. A
+         * subsequent click (the "drop") places it. Set by
+         * {@link #activatePickedUp(VisualElement, Vector)}.
+         */
+        private boolean pickupMode;
+        /**
+         * Set by released() on the very first release that follows a
+         * pickup activation. The dispatcher will then call clicked()
+         * on the same event, which uses this flag to know it should
+         * not commit (the element must stay picked up).
+         */
+        private boolean swallowClick;
+        /**
+         * Set by dragged() so released() can detect a long-press drag
+         * (the dispatcher skips the clicked() call when isMoved is
+         * true, so the controller has to commit itself).
+         */
+        private boolean dragHappened;
 
         private MouseControllerMoveElement(Cursor cursor) {
             super(cursor);
@@ -2465,11 +2486,61 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
             rotateAction.setEnabled(true);
             copyAction.setEnabled(true);
             minRaster = needsMinRaster(visualElement);
+            pickupMode = false;
+            swallowClick = false;
+            dragHappened = false;
             graphicHasChanged();
+        }
+
+        /**
+         * Activates the controller in "picked up" mode: the element
+         * follows the mouse without requiring a held button, and the
+         * next click places it. Used for the double-click gesture.
+         */
+        private void activatePickedUp(VisualElement visualElement, Vector pos) {
+            activate(visualElement, pos);
+            pickupMode = true;
+            // The very next release/click pair is the second half of
+            // the double-click. We have to swallow it via the
+            // released/clicked dance because the dispatcher calls
+            // both unconditionally.
+            swallowClick = true;
+        }
+
+        @Override
+        void pressed(MouseEvent e) {
+            // Drop click: no-op, the actual commit happens on release.
+        }
+
+        @Override
+        void released(MouseEvent e) {
+            if (pickupMode && swallowClick) {
+                // Release of the second click of the double-click that
+                // picked the element up. Mark the click for swallow;
+                // the dispatcher will then call clicked() which sees
+                // swallowClick and returns without committing.
+                return;
+            }
+            if (dragHappened) {
+                // Long-press drag: the dispatcher won't call clicked()
+                // (because wasMoved/isMoved is true), so we trigger
+                // it ourselves to commit the move.
+                clicked(e);
+            }
+            // For the no-drag case (pickup-drop, legacy click-pickup)
+            // leave the commit to the dispatcher's normal clicked().
         }
 
         @Override
         void clicked(MouseEvent e) {
+            if (swallowClick) {
+                // The second click of the pickup double-click. Don't
+                // commit; let the user keep moving the mouse without
+                // a held button and place the element on the next
+                // click.
+                swallowClick = false;
+                return;
+            }
             if (!isLocked()) {
                 visualElement.setPos(visualElement.getPos());
                 if (!visualElement.getPos().equals(originalVisualElement.getPos())
@@ -2478,13 +2549,12 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
                     insertWires(visualElement);
                 }
             }
-            // After a long-press or double-click move, the element
-            // becomes the new selection. Replaces whatever was selected
-            // before (e.g. a multi-select on A,B is replaced by the
-            // single element the user actually grabbed). If the
-            // original element was already the sole selection this is
-            // a no-op.
+            // After any move (long-press or double-click pickup drop),
+            // the element becomes the new selection. Replaces whatever
+            // was selected before.
             setSelection(originalVisualElement);
+            pickupMode = false;
+            swallowClick = false;
             mouseNormal.activate();
         }
 
@@ -2502,11 +2572,13 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
             // Long-press -> drag: the user is still holding the mouse
             // button, so the dispatcher routes mouseDragged events to
             // us. We move the element exactly like in the moved() path
-            // (which is used by the legacy click-to-pick-up flow).
+            // (which is used by the pickup and legacy click-to-pick-up
+            // flows).
             if (!isLocked()) {
                 Vector pos = getPosVector(e);
                 visualElement.setPos(toMinRaster(pos.add(delta), minRaster));
                 repaint();
+                dragHappened = true;
                 return true;
             }
             return false;
