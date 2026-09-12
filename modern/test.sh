@@ -5,4 +5,8 @@ cd "$ROOT"
 JDK="$ROOT/.runtime/jdk-21.0.12.1+1/Contents/Home"
 mkdir -p .build/tests
 "$JDK/bin/javac" -encoding UTF-8 -cp 'modern/dist/Digital.jar:modern/lib/flatlaf-3.7.jar' -d .build/tests modern/tests/ModernSmokeTest.java
-"$JDK/bin/java" -Djava.awt.headless=true -Ddigital.reduceMotion=true -cp '.build/tests:modern/dist/Digital.jar:modern/lib/flatlaf-3.7.jar' ModernSmokeTest
+for appearance in NSAppearanceNameLightAqua NSAppearanceNameDarkAqua; do
+  "$JDK/bin/java" -Djava.awt.headless=true -Ddigital.reduceMotion=true \
+    -Dapple.awt.application.appearance="$appearance" \
+    -cp '.build/tests:modern/dist/Digital.jar:modern/lib/flatlaf-3.7.jar' ModernSmokeTest
+done
