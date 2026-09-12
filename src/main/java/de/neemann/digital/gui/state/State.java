@@ -8,7 +8,6 @@ package de.neemann.digital.gui.state;
 import de.neemann.gui.ToolTipAction;
 
 import javax.swing.*;
-import javax.swing.border.BevelBorder;
 import javax.swing.border.Border;
 import java.awt.event.ActionEvent;
 
@@ -16,8 +15,14 @@ import java.awt.event.ActionEvent;
  * A simple state
  */
 public class State implements StateInterface {
-    private static final Border ENABLED_BORDER = BorderFactory.createCompoundBorder(BorderFactory.createBevelBorder(BevelBorder.LOWERED), BorderFactory.createEmptyBorder(4, 4, 4, 4));
-    private static final Border DISABLED_BORDER = BorderFactory.createCompoundBorder(BorderFactory.createBevelBorder(BevelBorder.RAISED), BorderFactory.createEmptyBorder(4, 4, 4, 4));
+    // The toggle indicator's "selected" state used to be drawn with a Swing
+    // BevelBorder, which painted a hard, square-cornered rectangle on top of
+    // the toolbar button and clashed with the rounded-rectangle look used
+    // everywhere else. The selection visual is now produced by the modern
+    // toolbar's MotionButtonUI through ButtonModel.isSelected(); the border
+    // itself stays empty so the rounded shape is never overdrawn.
+    private static final Border ENABLED_BORDER = BorderFactory.createEmptyBorder(8, 9, 8, 9);
+    private static final Border DISABLED_BORDER = BorderFactory.createEmptyBorder(8, 9, 8, 9);
     private JComponent indicator;
     private StateManager stateManager;
     private ToolTipAction action;

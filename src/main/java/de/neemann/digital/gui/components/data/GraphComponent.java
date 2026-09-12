@@ -40,9 +40,9 @@ public class GraphComponent extends JComponent {
             if (e.isMetaDown() || e.getWheelRotation() == 0) {
                 double notches = e.getPreciseWheelRotation();
                 if (notches == 0) notches = e.getWheelRotation();
-                f = Math.pow(0.9, notches);
+                f = Math.pow(0.95, notches);
             } else {
-                f = Math.pow(0.9, e.getWheelRotation());
+                f = Math.pow(0.95, e.getWheelRotation());
             }
             scale(f, e.getX());
         });
@@ -81,6 +81,7 @@ public class GraphComponent extends JComponent {
     @Override
     protected void paintComponent(Graphics g) {
         Graphics2D g2 = (Graphics2D) g;
+        de.neemann.digital.gui.modern.ModernUI.applyQualityRenderingHints(g2);
         g.setColor(Color.WHITE);
         g.fillRect(0, 0, getWidth(), getHeight());
 

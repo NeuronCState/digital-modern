@@ -267,7 +267,10 @@ public class VisualElement implements Drawable, Movable, AttributeListener {
      */
     public ImageIcon createIcon(int maxHeight) {
         float scaling = Screen.getInstance().getScaling();
-        BufferedImage bi = getBufferedImage(0.5 * scaling, (int) (maxHeight * scaling));
+        // Render at 1.0x logical unit so the icon is never smaller than the
+        // 30x26 cell ModernUI.componentIcon paints into. Smaller sources were
+        // getting upscaled there and looked blurry on standard-DPI displays.
+        BufferedImage bi = getBufferedImage(1.0 * scaling, (int) (maxHeight * scaling));
         return new ImageIcon(bi);
     }
 

@@ -38,10 +38,24 @@ public final class ColorScheme {
             .build();
 
     private static final ColorScheme DARK_SCHEME = new Builder(DEFAULT_SCHEME)
-            .set(ColorKey.BACKGROUND, Color.BLACK)
-            .set(ColorKey.MAIN, Color.GRAY)
-            .set(ColorKey.GRID, new Color(50, 50, 50))
-            .set(ColorKey.DISABLED, new Color(40, 40, 40))
+            .set(ColorKey.BACKGROUND, new Color(0x1C1C1E))
+            .set(ColorKey.MAIN, new Color(0xE5E7EB))
+            .set(ColorKey.WIRE, new Color(0x60A5FA))
+            .set(ColorKey.WIRE_LOW, new Color(0x34D399))
+            // Amber makes an excited/high signal easier to distinguish from
+            // the surrounding dark canvas and the inactive wire colors.
+            .set(ColorKey.WIRE_HIGH, new Color(0xFBBF24))
+            .set(ColorKey.WIRE_OUT, new Color(0xFB7185))
+            .set(ColorKey.WIRE_VALUE, new Color(0x4ADE80))
+            .set(ColorKey.WIRE_Z, new Color(0x9CA3AF))
+            .set(ColorKey.PINS, new Color(0xA1A1AA))
+            .set(ColorKey.HIGHLIGHT, new Color(0x22D3EE))
+            .set(ColorKey.GRID, new Color(0x3A3A3C))
+            .set(ColorKey.PASSED, new Color(0x4ADE80))
+            .set(ColorKey.ERROR, new Color(0xFB7185))
+            .set(ColorKey.DISABLED, new Color(0x52525B))
+            .set(ColorKey.TESTCASE, new Color(0x16, 0x65, 0x34, 200))
+            .set(ColorKey.ASYNC, new Color(0x9F, 0x12, 0x39, 200))
             .build();
 
     private static final ColorScheme COLOR_BLIND_SCHEME = new Builder(DEFAULT_SCHEME)
@@ -137,6 +151,7 @@ public final class ColorScheme {
                     .setRequiresRepaint();
 
     private static ColorScheme instance = null;
+    private static volatile boolean systemAppearanceDark;
 
     /**
      * @return the selected color map
@@ -150,7 +165,20 @@ public final class ColorScheme {
     }
 
     private static void updateInstance() {
-        instance = Settings.getInstance().get(COLOR_SCHEME).getScheme();
+        ColorSchemes configured = Settings.getInstance().get(COLOR_SCHEME);
+        instance = configured == ColorSchemes.DEFAULT && systemAppearanceDark
+                ? DARK_SCHEME : configured.getScheme();
+    }
+
+    /**
+     * Lets the modern desktop shell map the default circuit palette to the
+     * current system appearance. Explicit DARK, COLOR_BLIND and CUSTOM
+     * selections remain untouched.
+     */
+    public static void setSystemAppearanceDark(boolean dark) {
+        if (systemAppearanceDark == dark) return;
+        systemAppearanceDark = dark;
+        if (instance != null) updateInstance();
     }
 
     private final Color[] colors;

@@ -62,9 +62,9 @@ public class FSMComponent extends JComponent {
             if (e.isMetaDown() || e.getWheelRotation() == 0) {
                 double notches = e.getPreciseWheelRotation();
                 if (notches == 0) notches = e.getWheelRotation();
-                f = Math.pow(0.9, notches);
+                f = Math.pow(0.95, notches);
             } else {
-                f = Math.pow(0.9, e.getWheelRotation());
+                f = Math.pow(0.95, e.getWheelRotation());
             }
             Vector pos = getPosVector(e);
             transform.translate(pos.x, pos.y);
@@ -332,9 +332,7 @@ public class FSMComponent extends JComponent {
         graphics.fillRect(0, 0, getWidth(), getHeight());
 
         Graphics2D gr2 = (Graphics2D) graphics;
-        gr2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        gr2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        gr2.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+        de.neemann.digital.gui.modern.ModernUI.applyQualityRenderingHints(gr2);
 
         gr2.transform(transform);
         GraphicSwing gr = new GraphicSwing(gr2, 1);

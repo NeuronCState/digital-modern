@@ -155,6 +155,8 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
     private State stoppedState;
     private RunModelState runModelState;
     private State runModelMicroState;
+    private ToolTipAction simulationToggleAction;
+    private JButton simulationButton;
     private JComponent componentOnPane;
     private LibraryTreeModel treeModel;
 
@@ -421,11 +423,15 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
                 modernSplit.setRightComponent(circuitScrollPanel);
                 modernSplit.setContinuousLayout(true);
                 modernSplit.setBorder(BorderFactory.createEmptyBorder());
+                modernSplit.setOpaque(false);
+                modernSplit.setBackground(new Color(0, 0, 0, 0));
                 modernSplit.setDividerSize(1);
                 modernSplit.setResizeWeight(0);
                 modernSplit.setDividerLocation(252);
-                getContentPane().add(modernSplit);
-                componentOnPane = modernSplit;
+                getContentPane().remove(statusLabel);
+                componentOnPane = de.neemann.digital.gui.modern.ModernUI
+                        .createCanvasWorkspace(modernSplit, statusLabel);
+                getContentPane().add(componentOnPane, BorderLayout.CENTER);
                 revalidate();
             }
             de.neemann.digital.gui.modern.ModernUI.setSidebarVisible(modernSplit, treeCheckBox.isSelected());
@@ -436,6 +442,9 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
         sidebarButton.addActionListener(e -> treeCheckBox.doClick());
         toolBar.add(sidebarButton, 0);
         treeCheckBox.setAccelerator(KeyStroke.getKeyStroke("F5"));
+        // The component library is part of the default workspace. Defer the
+        // click until the frame is showing so the initial state is expanded.
+        SwingUtilities.invokeLater(treeCheckBox::doClick);
 
         JCheckBoxMenuItem presentationMode = new JCheckBoxMenuItem(Lang.get("menu_presentationMode"));
         presentationMode.setSelected(presentationModeDefault);
@@ -452,8 +461,6 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
                 }
             }
         }.setToolTip(Lang.get("menu_tutorial_tt"));
-
-        SwingUtilities.invokeLater(treeCheckBox::doClick);
 
         toolBar.add(viewHelp.createJButtonNoText());
         toolBar.add(zoomIn.createJButtonNoText());
@@ -1119,8 +1126,14 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
             }
         }.setToolTip(Lang.get("menu_runToBreakMicro_tt")).setAccelerator("B").setEnabledChain(false);
 
-        ToolTipAction runModelAction = runModelState.createToolTipAction(Lang.get("menu_run"), ICON_RUN)
-                .setToolTip(Lang.get("menu_run_tt"));
+        simulationToggleAction = new ToolTipAction(Lang.get("menu_run"), ICON_RUN) {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (model != null || runModelState.isActive() || runModelMicroState.isActive()) stoppedState.enter();
+                else runModelState.enter();
+                updateSimulationToggle();
+            }
+        }.setToolTip(Lang.get("menu_run_tt"));
         ToolTipAction runModelMicroAction = runModelMicroState.createToolTipAction(Lang.get("menu_micro"), ICON_MICRO)
                 .setToolTip(Lang.get("menu_micro_tt")).setAccelerator("G");
         runToBreakAction = new ToolTipAction(Lang.get("menu_fast"), ICON_FAST) {
@@ -1179,7 +1192,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
             @Override
             public void actionPerformed(ActionEvent actionEvent) {
                 if (model == null)
-                    runModelAction.actionPerformed(actionEvent);
+                    simulationToggleAction.actionPerformed(actionEvent);
                 else
                     stoppedStateAction.actionPerformed(actionEvent);
             }
@@ -1190,7 +1203,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
         run.add(showMeasurementDialog.createJMenuItem());
         run.add(showMeasurementGraph.createJMenuItem());
         run.addSeparator();
-        run.add(runModelAction.createJMenuItem());
+        run.add(simulationToggleAction.createJMenuItem());
         run.add(runToBreakAction.createJMenuItem());
         run.add(stoppedStateAction.createJMenuItem());
         run.addSeparator();
@@ -1201,18 +1214,33 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
         run.add(runTests.createJMenuItem());
         run.add(runAllTests.createJMenuItem());
 
-        JButton runButton = runModelAction.createJButtonNoText();
+        JButton runButton = simulationToggleAction.createJButtonNoText();
         runButton.setText(Lang.get("menu_run"));
         runButton.putClientProperty("modern.primary", true);
-        toolBar.add(runModelState.setIndicator(runButton));
+        runButton.setFocusable(false);
+        simulationButton = runButton;
+        toolBar.add(runButton);
         toolBar.add(runToBreakAction.createJButtonNoText());
-        toolBar.add(stoppedStateAction.createJButtonNoText());
         toolBar.addSeparator();
         toolBar.add(runModelMicroState.setIndicator(runModelMicroAction.createJButtonNoText()));
         toolBar.add(doMicroStep.createJButtonNoText());
         toolBar.add(runToBreakMicroAction.createJButtonNoText());
         toolBar.addSeparator();
         toolBar.add(runTests.createJButtonNoText());
+        updateSimulationToggle();
+    }
+
+    /** Keeps the single primary toolbar control in sync with simulation state. */
+    private void updateSimulationToggle() {
+        if (simulationToggleAction == null) return;
+        boolean running = model != null || (runModelState != null && runModelState.isActive())
+                || (runModelMicroState != null && runModelMicroState.isActive());
+        simulationToggleAction.setIcon(running ? ICON_STOP : ICON_RUN);
+        simulationToggleAction.putValue(Action.NAME, Lang.get(running ? "menu_element" : "menu_run"));
+        if (simulationButton != null) {
+            simulationButton.setText(Lang.get(running ? "menu_element" : "menu_run"));
+            simulationButton.setToolTipText(Lang.get(running ? "menu_element_tt" : "menu_run_tt"));
+        }
     }
 
     /**
@@ -1410,6 +1438,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
                 // keep errors
                 if (circuitComponent.getHighLightStyle() != Style.ERROR)
                     circuitComponent.removeHighLighted();
+                updateSimulationToggle();
             }
 
         });
@@ -1423,6 +1452,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
                 stoppedState.getAction().setEnabled(true);
                 runTests.setEnabled(false);
                 createAndStartModel(false, ModelEventType.MICROSTEP, null);
+                updateSimulationToggle();
             }
         });
         stateManager.setActualState(stoppedState);
@@ -1460,6 +1490,7 @@ public final class Main extends JFrame implements ClosingWindowListener.ConfirmS
             showMeasurementGraph.setEnabled(true);
             runTests.setEnabled(false);
             createAndStartModel(runRealTime, ModelEventType.STEP, modelModifier);
+            updateSimulationToggle();
         }
     }
 

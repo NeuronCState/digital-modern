@@ -256,13 +256,13 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
                 // JVM still bridges NSEventTypeMagnify) OR an explicit
                 // Cmd+scroll gesture (the standard macOS zoom shortcut
                 // used by Safari/Pages/Photos). Both map to zoom.
-                // 0.9^1 per "notch" matches the legacy feel; pinch events
+                // 0.95^1 per "notch" keeps wheel zooming precise; pinch events
                 // deliver small fractional deltas that accumulate.
                 double notches = e.getPreciseWheelRotation();
                 if (notches == 0) notches = e.getWheelRotation();
-                f = Math.pow(0.9, notches);
+                f = Math.pow(0.95, notches);
             } else {
-                f = Math.pow(0.9, e.getWheelRotation());
+                f = Math.pow(0.95, e.getWheelRotation());
             }
             if (scalingValid(f)) {
                 Vector pos = getPosVector(e);
@@ -1197,7 +1197,7 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
         if (graphicHasChangedFlag || newBufferRequired) {
 
             if (newBufferRequired)
-                buffer = GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice().getDefaultConfiguration().createCompatibleImage(getWidth(), getHeight());
+                buffer = getGraphicsConfiguration().createCompatibleImage(getWidth(), getHeight());
 
             Graphics2D gr2 = buffer.createGraphics();
 
@@ -1211,7 +1211,7 @@ public class CircuitComponent extends JComponent implements ChangedListener, Lib
                 drawGrid(gr2);
 
             if (presentationMode) {
-                gr2.setColor(Color.LIGHT_GRAY);
+                gr2.setColor(ColorScheme.getSelected().getColor(ColorKey.MAIN));
                 gr2.drawString(Lang.get("menu_presentationMode"), 4, getHeight() - 4);
             }
 

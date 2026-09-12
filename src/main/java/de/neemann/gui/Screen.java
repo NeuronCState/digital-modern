@@ -76,9 +76,20 @@ public final class Screen {
     }
 
     private Screen() {
-        Font font = new JLabel().getFont();
+        Font font;
         float scaling = 1;
-        int size = font.getSize();
+        int size;
+        if (IS_MAC) {
+            // On macOS Java 8 returned a default label font of 11pt; Java 9+
+            // (especially Java 17/21 with HiDPI) returns 13pt because the
+            // default is now `.AppleSystemUIFont` 13.  Hard-pin to 11 so the
+            // chrome and toolbar look the same on Java 8 and Java 21.
+            font = new Font(".AppleSystemUIFont", Font.PLAIN, 11);
+            size = 11;
+        } else {
+            font = new JLabel().getFont();
+            size = font.getSize();
+        }
         int fontScalingPercent = Settings.getInstance().get(Keys.SETTINGS_FONT_SCALING);
         int s = fontScalingPercent * size / 100;
         if (s != size) {

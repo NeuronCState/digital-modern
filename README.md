@@ -15,7 +15,7 @@ Digital is an easy-to-use digital logic designer and circuit simulator designed 
 
 There is no installation required, just unpack the *Digital.zip* file, which is available
 for [download](https://github.com/hneemann/Digital/releases/latest/download/Digital.zip). On Linux start the shell
-script and on Windows and MacOS the JAR file can be started directly. A Java Runtime Environment (at least JRE 8) is
+script and on Windows and MacOS the JAR file can be started directly. A Java Runtime Environment (at least JRE 21) is
 required to run Digital. On Windows the easiest way to get Java is to install the binaries provided by the
 [Eclipse Temurin](https://adoptium.net/) project.
 
@@ -236,10 +236,10 @@ over and over again.
 If you want to build Digital from the source code:
 
 * At first clone the repository.
-* A JDK (at least JDK 8) is required (either the Oracle JDK or OpenJDK)
+* A JDK (at least JDK 21) is required (either the Oracle JDK or OpenJDK)
 * maven is used as build system, so the easiest way is to install [maven](https://maven.apache.org/).
 * After that you can simply run `mvn install` to build Digital.
-* Run `mvn site` to create a findbugs and a JaCoCo code coverage report.
+* Run `mvn site` to create a SpotBugs and a JaCoCo code coverage report.
 * Most IDEs (Eclipse, NetBeans, IntelliJ) are able to import the `pom.xml` to create a project.
 
 ## Contribution guidelines ##

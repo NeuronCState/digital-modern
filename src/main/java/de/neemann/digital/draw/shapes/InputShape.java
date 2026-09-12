@@ -130,6 +130,11 @@ public class InputShape implements Shape {
             Vector center = new Vector(-1 - outSize, 0);
             Vector rad = OutputShape.getOutRad(small);
             graphic.drawCircle(center.sub(rad), center.add(rad), style);
+            // Keep the input switch legible when its state color matches the
+            // running-mode wire color, especially against the dark palette.
+            // The output indicator already uses this fill-plus-outline
+            // treatment; inputs should have the same visual separation.
+            graphic.drawCircle(center.sub(rad), center.add(rad), Style.NORMAL);
 
             Vector textPos = new Vector(-outSize * 3, 0);
             graphic.drawText(textPos, label, Orientation.RIGHTCENTER, Style.INOUT);

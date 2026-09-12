@@ -90,8 +90,7 @@ public class ExpressionComponent extends JComponent {
 
     private Graphics2D getGraphics2D(Graphics graphics) {
         final Graphics2D gr = (Graphics2D) graphics;
-        gr.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-        gr.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        de.neemann.digital.gui.modern.ModernUI.applyQualityRenderingHints(gr);
         return gr;
     }
 
