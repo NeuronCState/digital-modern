@@ -44,7 +44,18 @@ public class GraphicSVG extends Graphic {
      * @param a   the attributes
      */
     public GraphicSVG(OutputStream out, ElementAttributes a) {
-        this(out, null, DEF_SCALE);
+        this(out, DEF_SCALE, a);
+    }
+
+    /**
+     * Creates an SVG graphic with a caller-selected physical scale.
+     *
+     * @param out      output stream
+     * @param a        SVG settings
+     * @param svgScale scale in SVG millimetres per 100 logical units
+     */
+    public GraphicSVG(OutputStream out, int svgScale, ElementAttributes a) {
+        this(out, (File) null, svgScale);
         if (a.get(SVGSettings.LATEX))
             setTextStyle(new TextFormatLaTeX(a.get(SVGSettings.PINS_IN_MATH_MODE)));
         if (a.get(SVGSettings.HIGH_CONTRAST))
