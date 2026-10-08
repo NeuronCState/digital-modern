@@ -33,6 +33,7 @@ GENERATED = (
     .resolve()
 )
 SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
+DANGEROUS_PATH_CHARS = re.compile(r"[\"'&|;$<>`\x00]")
 
 
 class ToolError(Exception):
@@ -59,10 +60,18 @@ def _safe_output(name: str | None) -> Path:
     return GENERATED / filename
 
 
+def _validate_safe_path(path: Path) -> Path:
+    for part in path.parts:
+        if DANGEROUS_PATH_CHARS.search(part):
+            raise ToolError(f"Path contains potentially unsafe characters: {path}")
+    return path
+
+
 def _input_path(value: Any, suffix: str | None = None) -> Path:
     if not isinstance(value, str) or not value.strip():
         raise ToolError("path must be a non-empty string")
     path = Path(value).expanduser().resolve()
+    _validate_safe_path(path)
     if not path.is_file():
         raise ToolError(f"file does not exist: {path}")
     if suffix and path.suffix.lower() != suffix.lower():
@@ -330,7 +339,7 @@ def run_tests(path: Path, timeout: int, verbose: bool) -> dict[str, Any]:
     try:
         completed = subprocess.run(
             command, cwd=ROOT, capture_output=True, text=True, timeout=timeout
-        )
+        )  # nosec B603
     except subprocess.TimeoutExpired as exc:
         raise ToolError(f"Digital test timed out after {timeout}s") from exc
     output = (completed.stdout + completed.stderr).strip()
@@ -359,7 +368,7 @@ def render_svg(path: Path, timeout: int) -> dict[str, Any]:
     try:
         completed = subprocess.run(
             command, cwd=ROOT, capture_output=True, text=True, timeout=timeout
-        )
+        )  # nosec B603
     except subprocess.TimeoutExpired as exc:
         raise ToolError(f"Digital SVG export timed out after {timeout}s") from exc
     if completed.returncode != 0:
@@ -378,9 +387,10 @@ def open_circuit(path: Path, app_path: str | None) -> dict[str, Any]:
         if (app_path or configured_app)
         else ROOT / "modern/dist/Digital.app"
     )
+    _validate_safe_path(app)
     if not app.exists():
         raise ToolError(f"Digital.app not found: {app}")
-    subprocess.Popen(["open", "-a", str(app), str(path)], cwd=ROOT)
+    subprocess.Popen(["open", "-a", str(app), str(path)], cwd=ROOT)  # nosec B603 B607
     return {"opened": True, "app": str(app), "path": str(path)}
 
 
