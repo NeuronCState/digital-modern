@@ -21,10 +21,17 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
 
-
-ROOT = Path(os.environ.get("DIGITAL_PROJECT_ROOT", Path(__file__).resolve().parents[1])).expanduser().resolve()
+ROOT = (
+    Path(os.environ.get("DIGITAL_PROJECT_ROOT", Path(__file__).resolve().parents[1]))
+    .expanduser()
+    .resolve()
+)
 SERVER_ROOT = Path(__file__).resolve().parent
-GENERATED = Path(os.environ.get("DIGITAL_MCP_OUTPUT_DIR", SERVER_ROOT / "generated")).expanduser().resolve()
+GENERATED = (
+    Path(os.environ.get("DIGITAL_MCP_OUTPUT_DIR", SERVER_ROOT / "generated"))
+    .expanduser()
+    .resolve()
+)
 SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
@@ -43,7 +50,9 @@ def _number(value: Any, name: str) -> int:
 
 
 def _safe_output(name: str | None) -> Path:
-    filename = name or f"circuit-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}.dig"
+    filename = (
+        name or f"circuit-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}.dig"
+    )
     if not SAFE_NAME.fullmatch(filename) or not filename.endswith(".dig"):
         raise ToolError("file_name must be a simple .dig filename")
     GENERATED.mkdir(parents=True, exist_ok=True)
@@ -98,12 +107,16 @@ def _pin(element: dict[str, Any], pin: Any, output: bool) -> tuple[int, int]:
     return x, y + index * 40
 
 
-def _wire_point(design: dict[str, Any], endpoint: Any, output: bool) -> tuple[int, int]:
+def _wire_point(
+    elements_by_id: dict[str, Any], endpoint: Any, output: bool
+) -> tuple[int, int]:
     if isinstance(endpoint, dict) and "x" in endpoint and "y" in endpoint:
-        return _number(endpoint["x"], "wire point.x"), _number(endpoint["y"], "wire point.y")
+        return _number(endpoint["x"], "wire point.x"), _number(
+            endpoint["y"], "wire point.y"
+        )
     if not isinstance(endpoint, str):
         raise ToolError("wire endpoint must be an element id or {x,y}")
-    element = next((e for e in design["elements"] if e.get("id") == endpoint), None)
+    element = elements_by_id.get(endpoint)
     if element is None:
         raise ToolError(f"wire references unknown element: {endpoint}")
     return _pin(element, 0, output)
@@ -134,6 +147,7 @@ def build_circuit(design: dict[str, Any], output: Path) -> dict[str, Any]:
     if not isinstance(elements, list) or not isinstance(wires, list):
         raise ToolError("design.elements and design.wires must be arrays")
     ids: set[str] = set()
+    elements_by_id: dict[str, Any] = {}
     root = ET.Element("circuit")
     ET.SubElement(root, "version").text = "1"
     ET.SubElement(root, "attributes")
@@ -146,6 +160,7 @@ def build_circuit(design: dict[str, Any], output: Path) -> dict[str, Any]:
         if not isinstance(kind, str) or not SAFE_NAME.fullmatch(kind):
             raise ToolError(f"invalid element type: {kind!r}")
         ids.add(element_id)
+        elements_by_id[element_id] = element
         ve = ET.SubElement(visual, "visualElement")
         ET.SubElement(ve, "elementName").text = kind
         attrs = dict(element.get("attributes", {}))
@@ -159,19 +174,37 @@ def build_circuit(design: dict[str, Any], output: Path) -> dict[str, Any]:
             attrs["Testdata"] = _test_data(design["tests"])
         _element_attributes(ve, attrs)
         pos = ET.SubElement(ve, "pos")
-        pos.set("x", str(_number(element.get("x", element.get("pos", {}).get("x", 0)), "element.x")))
-        pos.set("y", str(_number(element.get("y", element.get("pos", {}).get("y", 0)), "element.y")))
+        pos.set(
+            "x",
+            str(
+                _number(
+                    element.get("x", element.get("pos", {}).get("x", 0)), "element.x"
+                )
+            ),
+        )
+        pos.set(
+            "y",
+            str(
+                _number(
+                    element.get("y", element.get("pos", {}).get("y", 0)), "element.y"
+                )
+            ),
+        )
     wires_node = ET.SubElement(root, "wires")
     for wire in wires:
         if not isinstance(wire, dict):
             raise ToolError("each wire must be an object")
         if "p1" in wire and "p2" in wire:
-            p1, p2 = _wire_point(design, wire["p1"], True), _wire_point(design, wire["p2"], False)
+            p1, p2 = _wire_point(elements_by_id, wire["p1"], True), _wire_point(
+                elements_by_id, wire["p2"], False
+            )
         elif "from" in wire and "to" in wire:
-            p1 = _wire_point(design, wire["from"], True)
-            p2 = _wire_point(design, wire["to"], False)
+            p1 = _wire_point(elements_by_id, wire["from"], True)
+            p2 = _wire_point(elements_by_id, wire["to"], False)
             if isinstance(wire["to"], str):
-                target = next(e for e in elements if e.get("id") == wire["to"])
+                target = elements_by_id.get(wire["to"])
+                if target is None:
+                    raise ToolError(f"wire references unknown element: {wire['to']}")
                 p2 = _pin(target, wire.get("input", 0), False)
         else:
             raise ToolError("each wire needs from/to or p1/p2")
@@ -191,7 +224,11 @@ def build_circuit(design: dict[str, Any], output: Path) -> dict[str, Any]:
     ET.SubElement(root, "measurementOrdering")
     ET.indent(root, space="  ")
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text('<?xml version="1.0" encoding="utf-8"?>\n' + ET.tostring(root, encoding="unicode"), encoding="utf-8")
+    output.write_text(
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        + ET.tostring(root, encoding="unicode"),
+        encoding="utf-8",
+    )
     return inspect_circuit(output)
 
 
@@ -213,15 +250,39 @@ def inspect_circuit(path: Path) -> dict[str, Any]:
                 elif entry.find("testData") is not None:
                     value = entry.findtext("testData/dataString")
                 else:
-                    value = next((child.text for child in list(entry) if child.tag != "string"), None)
+                    value = next(
+                        (child.text for child in list(entry) if child.tag != "string"),
+                        None,
+                    )
                 if key:
                     attrs[key] = value
         pos = ve.find("pos")
-        elements.append({"type": ve.findtext("elementName"), "x": int(pos.get("x", 0)), "y": int(pos.get("y", 0)), "attributes": attrs})
+        elements.append(
+            {
+                "type": ve.findtext("elementName"),
+                "x": int(pos.get("x", 0)),
+                "y": int(pos.get("y", 0)),
+                "attributes": attrs,
+            }
+        )
     wires = []
     for wire in root.findall("./wires/wire"):
-        wires.append({tag: {"x": int(wire.find(tag).get("x")), "y": int(wire.find(tag).get("y"))} for tag in ("p1", "p2")})
-    return {"path": str(path), "elements": elements, "element_count": len(elements), "wire_count": len(wires), "wires": wires}
+        wires.append(
+            {
+                tag: {
+                    "x": int(wire.find(tag).get("x")),
+                    "y": int(wire.find(tag).get("y")),
+                }
+                for tag in ("p1", "p2")
+            }
+        )
+    return {
+        "path": str(path),
+        "elements": elements,
+        "element_count": len(elements),
+        "wire_count": len(wires),
+        "wires": wires,
+    }
 
 
 def _jar() -> Path:
@@ -254,26 +315,57 @@ def _java() -> str:
 
 
 def run_tests(path: Path, timeout: int, verbose: bool) -> dict[str, Any]:
-    command = [_java(), "-Djava.awt.headless=true", "-cp", str(_jar()), "CLI", "test", "-circ", str(path)]
+    command = [
+        _java(),
+        "-Djava.awt.headless=true",
+        "-cp",
+        str(_jar()),
+        "CLI",
+        "test",
+        "-circ",
+        str(path),
+    ]
     if verbose:
         command += ["-verbose"]
     try:
-        completed = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=timeout)
+        completed = subprocess.run(
+            command, cwd=ROOT, capture_output=True, text=True, timeout=timeout
+        )
     except subprocess.TimeoutExpired as exc:
         raise ToolError(f"Digital test timed out after {timeout}s") from exc
     output = (completed.stdout + completed.stderr).strip()
-    return {"passed": completed.returncode == 0, "exit_code": completed.returncode, "output": output, "command": command}
+    return {
+        "passed": completed.returncode == 0,
+        "exit_code": completed.returncode,
+        "output": output,
+        "command": command,
+    }
 
 
 def render_svg(path: Path, timeout: int) -> dict[str, Any]:
     svg = path.with_suffix(path.suffix + ".svg")
-    command = [_java(), "-Djava.awt.headless=true", "-cp", str(_jar()), "CLI", "svg", "-dig", str(path), "-svg", str(svg)]
+    command = [
+        _java(),
+        "-Djava.awt.headless=true",
+        "-cp",
+        str(_jar()),
+        "CLI",
+        "svg",
+        "-dig",
+        str(path),
+        "-svg",
+        str(svg),
+    ]
     try:
-        completed = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=timeout)
+        completed = subprocess.run(
+            command, cwd=ROOT, capture_output=True, text=True, timeout=timeout
+        )
     except subprocess.TimeoutExpired as exc:
         raise ToolError(f"Digital SVG export timed out after {timeout}s") from exc
     if completed.returncode != 0:
-        raise ToolError((completed.stdout + completed.stderr).strip() or "Digital SVG export failed")
+        raise ToolError(
+            (completed.stdout + completed.stderr).strip() or "Digital SVG export failed"
+        )
     return {"svg_path": str(svg), "command": command}
 
 
@@ -281,7 +373,11 @@ def open_circuit(path: Path, app_path: str | None) -> dict[str, Any]:
     if sys.platform != "darwin":
         raise ToolError("digital_open_circuit currently requires macOS")
     configured_app = os.environ.get("DIGITAL_APP")
-    app = Path(app_path or configured_app).expanduser() if (app_path or configured_app) else ROOT / "modern/dist/Digital.app"
+    app = (
+        Path(app_path or configured_app).expanduser()
+        if (app_path or configured_app)
+        else ROOT / "modern/dist/Digital.app"
+    )
     if not app.exists():
         raise ToolError(f"Digital.app not found: {app}")
     subprocess.Popen(["open", "-a", str(app), str(path)], cwd=ROOT)
@@ -289,16 +385,122 @@ def open_circuit(path: Path, app_path: str | None) -> dict[str, Any]:
 
 
 TOOLS = [
-    {"name": "digital_build_circuit", "description": "Build a Digital .dig file from a structured circuit design, optionally test, render and open it. The host AI should translate text or an attached image into this design object.", "inputSchema": {"type": "object", "required": ["design"], "properties": {"design": {"type": "object", "description": "Object with elements, wires, and optional tests; see digital_design_schema."}, "file_name": {"type": "string", "description": "Optional simple .dig filename."}, "run_tests": {"type": "boolean", "description": "Run embedded test cases after building."}, "render_svg": {"type": "boolean", "description": "Export an SVG preview after building."}, "open": {"type": "boolean", "description": "Open the generated circuit in Digital.app on macOS."}, "timeout_seconds": {"type": "integer", "default": 30}}}},
-    {"name": "digital_inspect_circuit", "description": "Read a Digital .dig file and return its elements, positions, attributes and wires.", "inputSchema": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
-    {"name": "digital_run_tests", "description": "Run the test cases embedded in a Digital .dig file through Digital's headless CLI.", "inputSchema": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}, "timeout_seconds": {"type": "integer", "default": 30}, "verbose": {"type": "boolean", "default": True}}}},
-    {"name": "digital_render_circuit", "description": "Render a Digital .dig file to SVG using Digital's CLI.", "inputSchema": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}, "timeout_seconds": {"type": "integer", "default": 30}}}},
-    {"name": "digital_open_circuit", "description": "Open a .dig file in the modern Digital.app on macOS.", "inputSchema": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}, "app_path": {"type": "string"}}}},
-    {"name": "digital_design_schema", "description": "Return the structured design schema and supported common gate pin conventions.", "inputSchema": {"type": "object", "properties": {}}},
+    {
+        "name": "digital_build_circuit",
+        "description": "Build a Digital .dig file from a structured circuit design, optionally test, render and open it. The host AI should translate text or an attached image into this design object.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["design"],
+            "properties": {
+                "design": {
+                    "type": "object",
+                    "description": "Object with elements, wires, and optional tests; see digital_design_schema.",
+                },
+                "file_name": {
+                    "type": "string",
+                    "description": "Optional simple .dig filename.",
+                },
+                "run_tests": {
+                    "type": "boolean",
+                    "description": "Run embedded test cases after building.",
+                },
+                "render_svg": {
+                    "type": "boolean",
+                    "description": "Export an SVG preview after building.",
+                },
+                "open": {
+                    "type": "boolean",
+                    "description": "Open the generated circuit in Digital.app on macOS.",
+                },
+                "timeout_seconds": {"type": "integer", "default": 30},
+            },
+        },
+    },
+    {
+        "name": "digital_inspect_circuit",
+        "description": "Read a Digital .dig file and return its elements, positions, attributes and wires.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["path"],
+            "properties": {"path": {"type": "string"}},
+        },
+    },
+    {
+        "name": "digital_run_tests",
+        "description": "Run the test cases embedded in a Digital .dig file through Digital's headless CLI.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["path"],
+            "properties": {
+                "path": {"type": "string"},
+                "timeout_seconds": {"type": "integer", "default": 30},
+                "verbose": {"type": "boolean", "default": True},
+            },
+        },
+    },
+    {
+        "name": "digital_render_circuit",
+        "description": "Render a Digital .dig file to SVG using Digital's CLI.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["path"],
+            "properties": {
+                "path": {"type": "string"},
+                "timeout_seconds": {"type": "integer", "default": 30},
+            },
+        },
+    },
+    {
+        "name": "digital_open_circuit",
+        "description": "Open a .dig file in the modern Digital.app on macOS.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["path"],
+            "properties": {"path": {"type": "string"}, "app_path": {"type": "string"}},
+        },
+    },
+    {
+        "name": "digital_design_schema",
+        "description": "Return the structured design schema and supported common gate pin conventions.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
 ]
 
 
-SCHEMA = {"elements": [{"id": "a", "type": "In", "label": "A", "x": 200, "y": 100}, {"id": "b", "type": "In", "label": "B", "x": 200, "y": 140}, {"id": "and1", "type": "And", "x": 240, "y": 100}, {"id": "y", "type": "Out", "label": "Y", "x": 340, "y": 120}], "wires": [{"from": "a", "to": "and1", "input": 0}, {"from": "b", "to": "and1", "input": 1}, {"from": "and1", "to": "y"}], "tests": [{"inputs": {"A": 0, "B": 0}, "outputs": {"Y": 0}}, {"inputs": {"A": 1, "B": 1}, "outputs": {"Y": 1}}], "supported_types": ["In", "Out", "And", "Or", "XOr", "XNOr", "NAnd", "NOr", "Not", "Clock", "Const", "Ground", "VDD", "Testcase"], "wire_note": "For uncommon elements, use explicit p1/p2 coordinates. Common gate inputs are spaced 40 units vertically."}
+SCHEMA = {
+    "elements": [
+        {"id": "a", "type": "In", "label": "A", "x": 200, "y": 100},
+        {"id": "b", "type": "In", "label": "B", "x": 200, "y": 140},
+        {"id": "and1", "type": "And", "x": 240, "y": 100},
+        {"id": "y", "type": "Out", "label": "Y", "x": 340, "y": 120},
+    ],
+    "wires": [
+        {"from": "a", "to": "and1", "input": 0},
+        {"from": "b", "to": "and1", "input": 1},
+        {"from": "and1", "to": "y"},
+    ],
+    "tests": [
+        {"inputs": {"A": 0, "B": 0}, "outputs": {"Y": 0}},
+        {"inputs": {"A": 1, "B": 1}, "outputs": {"Y": 1}},
+    ],
+    "supported_types": [
+        "In",
+        "Out",
+        "And",
+        "Or",
+        "XOr",
+        "XNOr",
+        "NAnd",
+        "NOr",
+        "Not",
+        "Clock",
+        "Const",
+        "Ground",
+        "VDD",
+        "Testcase",
+    ],
+    "wire_note": "For uncommon elements, use explicit p1/p2 coordinates. Common gate inputs are spaced 40 units vertically.",
+}
 
 
 def call_tool(name: str, args: dict[str, Any]) -> Any:
@@ -319,7 +521,11 @@ def call_tool(name: str, args: dict[str, Any]) -> Any:
     if name == "digital_inspect_circuit":
         return inspect_circuit(path)
     if name == "digital_run_tests":
-        return run_tests(path, max(1, int(args.get("timeout_seconds", 30))), bool(args.get("verbose", True)))
+        return run_tests(
+            path,
+            max(1, int(args.get("timeout_seconds", 30))),
+            bool(args.get("verbose", True)),
+        )
     if name == "digital_render_circuit":
         return render_svg(path, max(1, int(args.get("timeout_seconds", 30))))
     if name == "digital_open_circuit":
@@ -327,7 +533,9 @@ def call_tool(name: str, args: dict[str, Any]) -> Any:
     raise ToolError(f"unknown tool: {name}")
 
 
-def response(request_id: Any, result: Any = None, error: dict[str, Any] | None = None) -> None:
+def response(
+    request_id: Any, result: Any = None, error: dict[str, Any] | None = None
+) -> None:
     message: dict[str, Any] = {"jsonrpc": "2.0", "id": request_id}
     if error is not None:
         message["error"] = error
@@ -346,7 +554,14 @@ def main() -> None:
             method = request.get("method")
             request_id = request.get("id")
             if method == "initialize":
-                response(request_id, {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "serverInfo": {"name": "digital-mcp", "version": "0.1.0"}})
+                response(
+                    request_id,
+                    {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {"tools": {}},
+                        "serverInfo": {"name": "digital-mcp", "version": "0.1.0"},
+                    },
+                )
             elif method == "notifications/initialized":
                 continue
             elif method == "ping":
@@ -357,15 +572,34 @@ def main() -> None:
                 params = request.get("params", {})
                 try:
                     result = call_tool(params.get("name"), params.get("arguments", {}))
-                    response(request_id, {"content": [{"type": "text", "text": _json(result)}], "structuredContent": result, "isError": False})
+                    response(
+                        request_id,
+                        {
+                            "content": [{"type": "text", "text": _json(result)}],
+                            "structuredContent": result,
+                            "isError": False,
+                        },
+                    )
                 except (ToolError, ValueError, OSError) as exc:
-                    response(request_id, {"content": [{"type": "text", "text": str(exc)}], "isError": True})
+                    response(
+                        request_id,
+                        {
+                            "content": [{"type": "text", "text": str(exc)}],
+                            "isError": True,
+                        },
+                    )
             else:
-                response(request_id, error={"code": -32601, "message": f"method not found: {method}"})
+                response(
+                    request_id,
+                    error={"code": -32601, "message": f"method not found: {method}"},
+                )
         except json.JSONDecodeError as exc:
             response(None, error={"code": -32700, "message": str(exc)})
         except Exception as exc:  # keep the stdio server alive for the next request
-            response(request.get("id") if isinstance(request, dict) else None, error={"code": -32603, "message": str(exc)})
+            response(
+                request.get("id") if isinstance(request, dict) else None,
+                error={"code": -32603, "message": str(exc)},
+            )
 
 
 if __name__ == "__main__":
