@@ -281,10 +281,14 @@ def open_circuit(path: Path, app_path: str | None) -> dict[str, Any]:
     if sys.platform != "darwin":
         raise ToolError("digital_open_circuit currently requires macOS")
     configured_app = os.environ.get("DIGITAL_APP")
-    app = Path(app_path or configured_app).expanduser() if (app_path or configured_app) else ROOT / "modern/dist/Digital.app"
+    app = Path(app_path or configured_app).expanduser().resolve() if (app_path or configured_app) else ROOT / "modern/dist/Digital.app"
     if not app.exists():
         raise ToolError(f"Digital.app not found: {app}")
-    subprocess.Popen(["open", "-a", str(app), str(path)], cwd=ROOT)
+    if app.name != "Digital.app":
+        raise ToolError(f"Only Digital.app can be opened, not {app.name}")
+    if path.suffix.lower() != ".dig":
+        raise ToolError(f"Only .dig files can be opened, not {path.suffix}")
+    subprocess.Popen(["open", "-a", str(app), "--", str(path)], cwd=ROOT)
     return {"opened": True, "app": str(app), "path": str(path)}
 
 
