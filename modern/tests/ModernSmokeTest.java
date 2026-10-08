@@ -148,25 +148,13 @@ public class ModernSmokeTest {
             if (animatedBranch == null || animatedBounds == null)
                 throw new AssertionError("No animated library folder row found");
             boolean animatedInitial = animatedTree.isExpanded(animatedBranch);
-            for (int clickCount = 1; clickCount <= 3; clickCount++) {
-                int count = clickCount;
-                Rectangle bounds = animatedBounds;
-                SwingUtilities.invokeAndWait(() -> animatedTree.dispatchEvent(new MouseEvent(animatedTree,
-                        MouseEvent.MOUSE_PRESSED, System.currentTimeMillis(), 0,
-                        bounds.x + 8, bounds.y + bounds.height / 2, count, false, MouseEvent.BUTTON1)));
-            }
+            dispatchMouseClicks(animatedTree, animatedBounds, 3);
             Thread.sleep(400);
             SwingUtilities.invokeAndWait(() -> { });
             if (animatedTree.isExpanded(animatedBranch) == animatedInitial)
                 throw new AssertionError("Three rapid animated presses did not end at the toggled state");
 
-            for (int clickCount = 1; clickCount <= 2; clickCount++) {
-                int count = clickCount;
-                Rectangle bounds = animatedBounds;
-                SwingUtilities.invokeAndWait(() -> animatedTree.dispatchEvent(new MouseEvent(animatedTree,
-                        MouseEvent.MOUSE_PRESSED, System.currentTimeMillis(), 0,
-                        bounds.x + 8, bounds.y + bounds.height / 2, count, false, MouseEvent.BUTTON1)));
-            }
+            dispatchMouseClicks(animatedTree, animatedBounds, 2);
             Thread.sleep(400);
             SwingUtilities.invokeAndWait(() -> { });
             if (animatedTree.isExpanded(animatedBranch) == animatedInitial)
@@ -190,5 +178,14 @@ public class ModernSmokeTest {
         System.out.println("PASS: automatic " + (ModernUI.isDarkAppearance() ? "dark" : "light")
                 + " appearance, global pages, antialiasing, native menu icons, disabled icons, sidebar state, search, "
                 + suites + " circuit test suites");
+    }
+
+    private static void dispatchMouseClicks(SelectTree tree, Rectangle bounds, int maxClicks) throws Exception {
+        for (int clickCount = 1; clickCount <= maxClicks; clickCount++) {
+            int count = clickCount;
+            SwingUtilities.invokeAndWait(() -> tree.dispatchEvent(new MouseEvent(tree,
+                    MouseEvent.MOUSE_PRESSED, System.currentTimeMillis(), 0,
+                    bounds.x + 8, bounds.y + bounds.height / 2, count, false, MouseEvent.BUTTON1)));
+        }
     }
 }
