@@ -29,6 +29,14 @@ static void DVRunOnMainQueue(dispatch_block_t block) {
     dispatch_sync(dispatch_get_main_queue(), block);
 }
 
+static void DVRunAsyncOnMainQueue(dispatch_block_t block) {
+    if (pthread_main_np() != 0) {
+        block();
+        return;
+    }
+    dispatch_async(dispatch_get_main_queue(), block);
+}
+
 /* Concrete definition, hidden from the public header.
  *
  * The host window is held via __weak so we never reach into a freed NSWindow
@@ -172,7 +180,7 @@ DVHandle dv_vibrancy_attach(void *hostWindowHandle, int style, double cornerRadi
 void dv_vibrancy_set_frame(DVHandle handle, double x, double y, double w, double h) {
     if (handle == NULL) return;
     struct DVHandleImpl *impl = (struct DVHandleImpl *)handle;
-    DVRunOnMainQueue(^{
+    DVRunAsyncOnMainQueue(^{
         @autoreleasepool {
             NSView *view = impl->effectView;
             if (view == nil || [view superview] == nil) return;
@@ -191,7 +199,7 @@ void dv_vibrancy_set_frame(DVHandle handle, double x, double y, double w, double
 void dv_vibrancy_set_hidden(DVHandle handle, int hidden) {
     if (handle == NULL) return;
     struct DVHandleImpl *impl = (struct DVHandleImpl *)handle;
-    DVRunOnMainQueue(^{
+    DVRunAsyncOnMainQueue(^{
         @autoreleasepool {
             NSView *view = impl->effectView;
             if (view == nil) return;
@@ -203,7 +211,7 @@ void dv_vibrancy_set_hidden(DVHandle handle, int hidden) {
 void dv_vibrancy_set_window_transparent(void *windowHandle, int transparent) {
     if (windowHandle == NULL) return;
     NSWindow *window = (__bridge NSWindow *)windowHandle;
-    DVRunOnMainQueue(^{
+    DVRunAsyncOnMainQueue(^{
         @autoreleasepool {
             [window setOpaque:(transparent == 0)];
             if (transparent != 0) {
@@ -228,7 +236,7 @@ void dv_vibrancy_set_window_transparent(void *windowHandle, int transparent) {
 void dv_vibrancy_set_corner_radius(DVHandle handle, double r) {
     if (handle == NULL) return;
     struct DVHandleImpl *impl = (struct DVHandleImpl *)handle;
-    DVRunOnMainQueue(^{
+    DVRunAsyncOnMainQueue(^{
         @autoreleasepool {
             NSView *view = impl->effectView;
             if (view == nil) return;
@@ -240,7 +248,7 @@ void dv_vibrancy_set_corner_radius(DVHandle handle, double r) {
 void dv_vibrancy_set_active(DVHandle handle, int active) {
     if (handle == NULL) return;
     struct DVHandleImpl *impl = (struct DVHandleImpl *)handle;
-    DVRunOnMainQueue(^{
+    DVRunAsyncOnMainQueue(^{
         @autoreleasepool {
             if (impl->isGlass) return; /* NSGlassEffectView tracks state on its own */
             NSView *view = impl->effectView;
@@ -260,7 +268,7 @@ void dv_vibrancy_set_active(DVHandle handle, int active) {
 void dv_vibrancy_detach(DVHandle handle) {
     if (handle == NULL) return;
     struct DVHandleImpl *impl = (struct DVHandleImpl *)handle;
-    DVRunOnMainQueue(^{
+    DVRunAsyncOnMainQueue(^{
         @autoreleasepool {
             NSView *view = impl->effectView;
             if (view != nil) {
