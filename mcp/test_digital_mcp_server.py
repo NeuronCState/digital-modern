@@ -1,7 +1,9 @@
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import digital_mcp_server as server
 
@@ -40,6 +42,31 @@ class DigitalMcpServerTest(unittest.TestCase):
         names = {tool["name"] for tool in server.TOOLS}
         self.assertIn("digital_build_circuit", names)
         self.assertIn("digital_run_tests", names)
+
+    @patch("digital_mcp_server._jar", return_value=Path("mocked.jar"))
+    @patch("digital_mcp_server._java", return_value="mocked-java")
+    @patch("subprocess.run")
+    def test_run_tests(self, mock_run, mock_java, mock_jar):
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["java", "CLI", "test"],
+            returncode=0,
+            stdout="1 passed, 0 failed\n",
+            stderr=""
+        )
+
+        result = server.run_tests(Path("dummy.dig"), timeout=10, verbose=True)
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["exit_code"], 0)
+        self.assertEqual(result["output"], "1 passed, 0 failed")
+        mock_run.assert_called_once()
+
+        mock_run.reset_mock()
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd=["java", "CLI", "test"], timeout=10)
+
+        with self.assertRaises(server.ToolError) as context:
+            server.run_tests(Path("dummy.dig"), timeout=10, verbose=True)
+
+        self.assertIn("Digital test timed out after 10s", str(context.exception))
 
 
 if __name__ == "__main__":
